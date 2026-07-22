@@ -3,107 +3,40 @@
     <h2>Записи на курсы</h2>
     <div v-if="isLoading">Загрузка...</div>
     <div v-else>
-      <div class="filters">
-        <input
-          v-model="searchQuery"
-          placeholder="Поиск..."
-          class="filtersInput"
-        />
-        <select
-          v-model="selectedStatus"
-          class="filtersSelect"
-        >
-          <option value="">Все</option>
-          <option value="active">Активные</option>
-          <option value="completed">Завершенные</option>
-          <option value="cancelled">Отмененные</option>
-        </select>
-      </div>
+      <CourseRegistrationsFilters
+        v-model:search-query="searchQuery"
+        v-model:selected-status="selectedStatus"
+      />
 
       <div v-if="isRegistrationsEmpty">Записей пока нет</div>
       <div v-else-if="isFilteredRegistrationsEmpty">Ничего не найдено</div>
-      <div
-        v-else
+      <CourseRegistrationCard
         v-for="registration in filteredRegistrations"
         :key="registration.id"
-        class="registrationCard"
-      >
-        <div class="registrationCardHeader">
-          <b>{{ registration.user.lastName }} {{ registration.user.firstName }}</b>
-          <span :class="registration.status">● </span>
-        </div>
-        <div>{{ registration.user.email }}</div>
-        <div>Курс: {{ registration.course.title }}</div>
-        <div>
-          Дата записи:
-          {{ formatRegistrationDate(registration.registeredAt) }}
-        </div>
-        <div class="registrationCardActions" v-if="registration.status !== 'cancelled'">
-          <button
-            @click="openCancelModal(registration)"
-            type="button"
-            class="actionButton"
-          >
-            Отменить запись
-          </button>
-        </div>
-        <div
-          v-else
-          class="registrationCardStatus"
-        >
-          Запись отменена
-          <span
-          v-if="registration.cancelReason"
-          class="registrationCardReason">
-            (причина: {{ registration.cancelReason }})
-          </span>
-        </div>
-      </div>
+        :registration="registration"
+        @cancel="openCancelModal"
+      />
     </div>
 
-    <div
+    <CancellationModal
       v-if="isCancelModalOpen"
-      class="modalOverlay"
-      @click.self="closeCancelModal"
-    >
-      <div
-        ref="cancelModalContainer"
-        class="modalContent"
-        tabindex="-1"
-        @keydown.esc="closeCancelModal"
-      >
-        <form
-          class="cancelForm"
-          @submit.prevent="submitCancellation"
-        >
-          <p>
-            Вы уверены, что хотите отменить запись
-            {{ selectedRegistration?.user.firstName }}
-            {{ selectedRegistration?.user.lastName }} на курс "{{
-              selectedRegistration?.course.title
-            }}"?
-          </p>
-
-          <textarea
-            v-model="cancellationReason"
-            placeholder="Причина отмены (необязательно)"
-            class="cancelFormTextarea"
-          />
-
-          <div class="cancelFormActions">
-            <button :disabled="isSubmittingCancellation" class="actionButton" type="submit">Да, отменить</button>
-            <button :disabled="isSubmittingCancellation" class="actionButton" type="button" @click="closeCancelModal">Нет</button>
-          </div>
-        </form>
-      </div>
-    </div>
+      :registration="selectedRegistration"
+      :cancellation-reason="cancellationReason"
+      :is-submitting="isSubmittingCancellation"
+      @close="closeCancelModal"
+      @submit="submitCancellation"
+      @update:cancellation-reason="cancellationReason = $event"
+    />
 
     <div v-if="errorMessage" class="errorMessage">{{ errorMessage }}</div>
   </div>
 </template>
 <script setup>
 import axios from 'axios';
-import { computed, onMounted, nextTick, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
+import CancellationModal from './CancellationModal.vue';
+import CourseRegistrationCard from './CourseRegistrationCard.vue';
+import CourseRegistrationsFilters from './CourseRegistrationsFilters.vue';
 import { useDebouncedValue } from '../composables/useDebouncedValue';
 import { API_ROUTES } from '../constants/apiRoutes';
 
@@ -122,7 +55,6 @@ const debouncedSearchQuery = useDebouncedValue(searchQuery)
 const selectedStatus = ref("");
 const isCancelModalOpen = ref(false);
 const cancellationReason = ref('')
-const cancelModalContainer = ref(null)
 const selectedRegistration = ref(null);
 const isSubmittingCancellation = ref(false);
 
@@ -199,9 +131,6 @@ const openCancelModal = async (registration) => {
   selectedRegistration.value = registration
   cancellationReason.value = registration.cancelReason ?? ''
   isCancelModalOpen.value = true
-
-  await nextTick()
-  cancelModalContainer.value?.focus()
 }
 
 const closeCancelModal = () => {
@@ -218,109 +147,13 @@ const isFilteredRegistrationsEmpty = computed(() => {
   return filteredRegistrations.value.length === 0
 })
 
-const formatRegistrationDate = (registeredAt) => {
-  if (typeof registeredAt !== 'string' || !registeredAt.trim()) {
-    return 'Дата недоступна'
-  }
-
-  return registeredAt.split(' ').slice(0, 2).join(' ')
-}
-
-
 onMounted(() => {
   fetchRegistrations()
 })
 
 </script>
 <style lang="css" scoped>
-  .filters {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-    margin-bottom: 10px;
-  }
-
-  .filtersInput,
-  .filtersSelect {
-    width: 200px;
-    padding: 10px;
-  }
-
-  .registrationCard {
-    border: 1px solid var(--color-border-default);
-    margin-bottom: 10px;
-    padding: 20px 20px 20px 25px;
-  }
-
-  .registrationCardHeader {
-    display: flex;
-    gap: 5px;
-    margin-bottom: 15px;
-  }
-
-  .registrationCardHeader .active {
-    color: var(--color-status-active);
-  }
-
-  .registrationCardHeader .completed {
-    color: var(--color-status-completed);
-  }
-
-  .registrationCardHeader .cancelled {
-    color: var(--color-status-cancelled);
-  }
-
-  .registrationCardActions {
-    margin-top: 15px;
-  }
-
-  .registrationCardStatus {
-    margin-top: 15px;
-    color: var(--color-status-cancelled);
-    font-size: 12px;
-    word-wrap: break-word;
-  }
-
-  .modalOverlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-    background: var(--color-overlay);
-  }
-
-  .modalContent {
-    width: 400px;
-    padding: 20px;
-    background: var(--color-surface-primary);
-  }
-
-  .cancelForm {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-  }
-
-  .cancelFormTextarea {
-    width: 100%;
-    padding: 8px;
-    resize: none;
-  }
-
-  .cancelFormActions {
-    display: flex;
-    gap: 10px;
-  }
-
-  .actionButton {
-    padding: 2px 5px;
-  }
-
-  .errorMessage {
-      color: var(--color-status-cancelled)
-  }
+.errorMessage {
+  color: var(--color-status-cancelled);
+}
 </style>
